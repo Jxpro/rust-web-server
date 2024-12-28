@@ -8,11 +8,11 @@ type Receiver = Arc<Mutex<mpsc::Receiver<Job>>>;
 
 pub struct ThreadPool {
     workers: Vec<Worker>,
-    sender: mpsc::Sender<Job>,
+    sender: Option<mpsc::Sender<Job>>,
 }
 struct Worker {
     id: usize,
-    thread: JoinHandle<()>,
+    thread: Option<JoinHandle<()>>,
 }
 
 #[derive(Debug)]
@@ -53,7 +53,10 @@ impl ThreadPool {
             println!("Worker {} created.", id);
         }
 
-        Ok(ThreadPool { workers, sender })
+        Ok(ThreadPool {
+            workers,
+            sender: Some(sender),
+        })
     }
 
     /// Execute a job in the ThreadPool.
@@ -67,17 +70,50 @@ impl ThreadPool {
     where
         F: FnOnce() + Send + 'static,
     {
-        self.sender.send(Box::new(f)).unwrap();
+        self.sender.as_ref().unwrap().send(Box::new(f)).unwrap();
     }
 }
 
 impl Worker {
     pub fn new(id: usize, receiver: Receiver) -> Self {
         let thread = thread::spawn(move || loop {
-            let job = receiver.lock().unwrap().recv().unwrap();
-            println!("Worker {id} got a job; executing.");
-            job();
+            // 如下代码可以编译运行，但是打不到异步的效果。
+            // 因为 if let 右边的临时值 MutexGuard<T>，其生命周期存在于后面的代码块中，
+            // 这会导致 job 运行结束之前一直持有 receiver 的锁，导致其他线程无法获取锁，
+            // 但是 let 语句会丢弃临时值，所以在 job 运行之前就释放了锁。
+            // if let Ok(job) = receiver.lock().unwrap().recv() {
+            //     println!("Worker {id} got a job; executing.");
+            //     job();
+            // } else {
+            //     println!("Worker {id} disconnected; shutting down.");
+            //     return;
+            // }
+            let job = receiver.lock().unwrap().recv();
+            match job {
+                Ok(job) => {
+                    println!("Worker {id} got a job; executing.");
+                    job();
+                }
+                Err(_) => {
+                    println!("Worker {id} disconnected; shutting down.");
+                    break;
+                }
+            }
         });
-        Self { id, thread }
+        Self {
+            id,
+            thread: Some(thread),
+        }
+    }
+}
+
+impl Drop for ThreadPool {
+    fn drop(&mut self) {
+        drop(self.sender.take());
+
+        for worker in &mut self.workers {
+            println!("Shutting down worker {id}.", id = worker.id);
+            worker.thread.take().unwrap().join().unwrap();
+        }
     }
 }

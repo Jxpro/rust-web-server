@@ -10,12 +10,15 @@ fn main() {
     let pool = ThreadPool::new(4);
     println!("Server listening on port 7878");
 
-    for stream in listener.incoming() {
+    // 仅处理两个请求，模拟优雅停机
+    for stream in listener.incoming().take(2) {
         let stream = stream.unwrap();
         pool.execute(|| {
             handle_connection(stream);
         });
     }
+
+    println!("Shutting down.");
 }
 
 fn handle_connection(mut stream: TcpStream) {
