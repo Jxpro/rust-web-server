@@ -2,4 +2,4 @@
 
 ## Overview
 
-A example implementation of of Chapter 21 in *The Rust Programming Language (TRPL)*.
+A example implementation of Chapter 21 in *The Rust Programming Language (TRPL)*.
