@@ -93,6 +93,7 @@ impl Worker {
                 Ok(job) => {
                     println!("Worker {id} got a job; executing.");
                     job();
+                    println!("Worker {id} finished the job.");
                 }
                 Err(_) => {
                     println!("Worker {id} disconnected; shutting down.");
